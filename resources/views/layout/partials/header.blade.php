@@ -1,0 +1,110 @@
+<div class="header">
+
+    <!-- Logo -->
+    <div class="header-left">
+        <a href="home" class="logo">
+
+            <img src="{{asset('img/logo.png')}}" width="40" height="40" alt="">
+        </a>
+    </div>
+    <!-- /Logo -->
+
+    <a id="toggle_btn" href="javascript:void(0);">
+                <span class="bar-icon">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </span>
+    </a>
+
+    <!-- Header Title -->
+    <div class="page-title-box">
+        <h3>PACRA Technologies</h3>
+    </div>
+    <!-- /Header Title -->
+
+    <a id="mobile_btn" class="mobile_btn" href="#sidebar"><i class="fa fa-bars"></i></a>
+
+    <!-- Header Menu -->
+    <ul class="nav user-menu">
+
+        <!-- Search -->
+        <li class="nav-item">
+            <div class="top-nav-search">
+                <a href="javascript:void(0);" class="responsive-search">
+                    <i class="fa fa-search"></i>
+                </a>
+                <form action="search">
+                    <input class="form-control" type="text" placeholder="Search here">
+                    <button class="btn" type="submit"><i class="fa fa-search"></i></button>
+                </form>
+            </div>
+        </li>
+        <!-- /Search -->
+
+        <!-- Wizpac -->
+        <li class="nav-item">
+            <div class="top-nav-search">
+                <?php $password = \App\Helpers\helpers::get_user_password(Auth::id()); ?>
+                <form method="POST" action="https://209.97.168.200/pacrawizpackv3/public/login" id="wizpac">
+                    <div style="display: none" height="20">
+                        <input id="email" type="email" name="email" value="{{ Auth::user()->email }}">
+                        <input id="text" type="password" name="password" value="{{ $password }}">
+                    </div>
+                    <div class="form-group text-center">
+                        <button class="btn btn-primary" type="submit">WizPac</button>
+                    </div>
+                </form>
+            </div>
+        </li>
+        <!-- /Wizpac -->
+
+
+        <!-- Notifications -->
+        <li class="nav-item dropdown">
+            <a href="#" class="dropdown-toggle nav-link" data-toggle="dropdown">
+                <i class="fa fa-bell-o"></i> <span class="badge badge-pill">{{--3--}}</span>
+            </a>
+            <div class="dropdown-menu notifications">
+                <div class="topnav-dropdown-header">
+                    {{-- <span class="notification-title">Notifications</span>
+                     <a href="javascript:void(0)" class="clear-noti"> Clear All </a>--}}
+                </div>
+
+            </div>
+        </li>
+        <!-- /Notifications -->
+
+
+        <li class="nav-item dropdown has-arrow main-drop">
+            <a href="#" class="dropdown-toggle nav-link" data-toggle="dropdown">
+                <?php $dp = \App\Helpers\helpers::get_dp(Auth::id());
+                $userId = \App\Helpers\helpers::get_orignal_id(Auth::id());
+                ?>
+
+                <span class="user-img"><img src="{{asset('users/'.$dp)}}" alt="">
+                        <span class="status online"></span></span>
+                <span>{{ Auth::user()->first_name }}</span>
+            </a>
+            <div class="dropdown-menu">
+                <a class="dropdown-item" href="{{ url('profile') }}/{{$userId}}">My Profile</a>
+                {{--                        <a class="dropdown-item" href="settings">Settings</a>--}}
+                <a class="dropdown-item" href="{{ route('logout') }}">Logout</a>
+            </div>
+        </li>
+    </ul>
+    <!-- /Header Menu -->
+
+    <!-- Mobile Menu -->
+    <div class="dropdown mobile-user-menu">
+        <a href="#" class="nav-link dropdown-toggle" data-toggle="dropdown" aria-expanded="false"><i
+                    class="fa fa-ellipsis-v"></i></a>
+        <div class="dropdown-menu dropdown-menu-right">
+            <a class="dropdown-item" href="profile">My Profile</a>
+            <a class="dropdown-item" href="settings">Settings</a>
+            <a class="dropdown-item" href="login">Logout</a>
+        </div>
+    </div>
+    <!-- /Mobile Menu -->
+
+</div>

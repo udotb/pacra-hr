@@ -1,0 +1,889 @@
+<?php
+
+namespace App\Http\Controllers\Attendance;
+
+use App\Helpers\helpers;
+use App\Http\Controllers\Controller;
+use App\Models\attendance\attendanceActivityModel;
+use App\Models\attendance\AttendanceEditRequest;
+use App\Models\Attendance\AttendanceModel;
+use App\Models\attendance\PacraPresence;
+use App\Models\attendance\WorkFromHomeModel;
+use App\Models\Employees\UsersModel;
+use App\Models\holidaysModel;
+use App\Models\Leaves\pacraLeavesBalance;
+use App\Models\Leaves\PacraLeavesModel;
+use App\Models\Leaves\PacraLeavesTypeModel;
+use App\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Validator;
+use DB;
+use DateTime;
+use Carbon\Carbon;
+
+class AttendanceController extends Controller
+{
+
+    public function attendanceEmployee(Request $request)
+
+    {
+
+        $userId = helpers::get_orignal_id(Auth::id());
+        $this->viewData['meta_title'] = 'My Board';
+
+        $current_date = Carbon::now()->toDateString();
+
+       //dd($userId);
+
+        $ip_address =$request->ip();
+
+        $attendanceActivity = attendanceActivityModel::where('date', '=', date('Y-m-d'))
+            ->where('user_id', '=', $userId)
+            ->orderby('id', 'desc')
+            ->limit(1)
+            ->get();
+
+        $todayAttendanceActivity = attendanceActivityModel::where('date', '=', date('Y-m-d'))
+            ->where('user_id', '=', $userId)
+            ->get();
+
+
+       // dd($attendanceActivity);
+        $today_attendance = AttendanceModel::where('date', '=', date('Y-m-d'))
+            ->where('user_id', '=', $userId)
+            ->get();
+
+        $maxPunchIn = attendanceActivityModel::where('date', '=', date('Y-m-d'))
+            ->where('user_id', '=', $userId)
+            ->where('activity', '=', 'punch_in')
+            ->orderby('id', 'DESC')
+            ->limit(1)
+            ->get();
+
+        //dd($maxPunchIn[0]->time);
+
+        $last_two_days_attendance = AttendanceModel::
+            where('user_id', '=', $userId)
+            ->select('pacra_attendance.id as attendanceRecordID', 'pacra_attendance.user_id', 'pacra_attendance.date', 'pacra_attendance.log_in_time',
+                'pacra_attendance.log_out_time', 'pacra_attendance.ip_address_login','pacra_attendance.ip_address_logout',
+                'pacra_attendance.status', 'pacra_attendance.office_hours', 'pacra_attendance_status.title')
+            ->leftjoin('pacra_attendance_status', 'status', '=', 'pacra_attendance_status.id')
+            ->orderBy('pacra_attendance.id', 'DESC')
+            //->paginate(10);
+            ->Limit(3)
+            ->get();
+
+        $checkEditAttendanceApp = AttendanceEditRequest::where('attendance_record', $last_two_days_attendance->first()->attendanceRecordID)->get();
+
+           // dd($checkEditAttendanceApp);
+
+       // dd($last_two_days_attendance->first()->attendanceRecordID);
+
+        $leaves_types = PacraLeavesTypeModel::where('isActive', '=', '1')->get() ;
+
+        $ontime_statistics = AttendanceModel::Where('user_id', '=', $userId)
+            ->whereTime('log_in_time', '<=', \Carbon\Carbon::parse('09:00:00'))->count();
+
+        $late_statistics = AttendanceModel::Where('user_id', '=', $userId)
+            ->whereTime('log_in_time', '>', \Carbon\Carbon::parse('09:01:00'))->count();
+
+        $absent_statistics = AttendanceModel::Where('user_id', '=', $userId)
+            ->where('log_in_time', '=', NULL)->count();
+
+
+        $chkWFH = DB::select('select * from pacra_workfromhome WHERE  status = "Approve" and user_id = '.$userId.'  and  FIND_IN_SET("'.$current_date.'", dates) ');
+
+//dd($chkWFH);
+        /*$chkWFH = DB::select('select * from pacra_workfromhome
+            WHERE user_id = 125 AND from_date >= "2020-11-03" and to_date>="2020-11-03" and status = "Approve" ');*/
+
+
+
+
+
+
+        return view('attendance_employee', $this->viewData)
+            ->with ('ip_address', $ip_address)
+            ->with ('today_attendance', $today_attendance)
+            ->with ('last_two_days_attendance', $last_two_days_attendance)
+            ->with ('leaves_types', $leaves_types)
+            ->with ('ontime_statistics', $ontime_statistics)
+            ->with ('late_statistics', $late_statistics)
+            ->with ('absent_statistics', $absent_statistics)
+            ->with ('attendanceActivity', $attendanceActivity)
+            ->with ('todayAttendanceActivity', $todayAttendanceActivity)
+            ->with ('maxPunchIn', $maxPunchIn)
+            ->with ('chkWFH', $chkWFH)
+            ->with ('checkEditAttendanceApp', $checkEditAttendanceApp);
+    }
+
+
+    public function addMarkAttendance(Request $request)
+
+    {
+        $userId = helpers::get_orignal_id(Auth::id());
+
+        $from = date('Y-m-21');
+        $to = date('Y-m-t');
+        $current_time = date("H:i:s ");
+
+        $lateComingCount = AttendanceModel::
+            whereBetween('date', [$from, $to])
+                   ->where('user_id', '=', $userId)
+                   ->where('status', '=', 1)
+                   ->count();
+
+        //dd($lateComingCount);
+        $getLeaveBalance = pacraLeavesBalance::where('user_id', '=', $userId)
+            ->get();
+
+
+        attendanceActivityModel::create(['user_id' => $userId, 'date' => date('Y-m-d'),
+            'time'=>date("H:i:s"), 'activity'=>$request->punch_in_value
+            ]);
+
+        $ip_address =$request->ip();
+        if (date("H:i:s") > date("09:00:59") )
+            $login_status = 1;
+        else
+            $login_status = 2;
+
+
+        $today_attendance = AttendanceModel::where('date', '=', date('Y-m-d'))
+            ->where('user_id', '=', $userId)
+            ->get();
+
+        if($today_attendance->isEmpty()){
+
+
+            if($lateComingCount > 4 and  ($current_time > date("09:15:59") && $current_time < date("10:30:59"))){
+
+                PacraLeavesModel::create(['user_id' => $userId, 'leave_type' => 8,
+                    'from_date'=>date('Y-m-d'), 'to_date'=>date('Y-m-d'),
+                    'leave_days'=>0.50, 'existing_balance'=>$getLeaveBalance[0]->current_balance,
+                    'new_balance'=>$getLeaveBalance[0]->current_balance - 0.50,
+                    'reason'=>'Late Coming More than 4 time after 09:15 AM',
+                    'status'=>'Approved', 'approved_by'=>1]);
+
+                pacraLeavesBalance::where('user_id', '=', $userId)
+                    ->update(['current_balance' => $getLeaveBalance[0]->current_balance - 0.50]);
+            }
+
+            elseif ($lateComingCount > 4 and ($current_time > date("09:00:59") && $current_time < date("09:15:59"))){
+
+                PacraLeavesModel::create(['user_id' => $userId, 'leave_type' => 8,
+                    'from_date'=>date('Y-m-d'), 'to_date'=>date('Y-m-d'),
+                    'leave_days'=>0.25, 'existing_balance'=>$getLeaveBalance[0]->current_balance,
+                    'new_balance'=>$getLeaveBalance[0]->current_balance - 0.25,
+                    'reason'=>'Late Coming More than 4 time after 09:00 AM',
+                    'status'=>'Approved', 'approved_by'=>1]);
+
+                pacraLeavesBalance::where('user_id', '=', $userId)
+                    ->update(['current_balance' => $getLeaveBalance[0]->current_balance - 0.25]);
+            }
+
+            elseif (($current_time > date("13:00:59") && $current_time < date("18:00:59"))){
+
+                PacraLeavesModel::create(['user_id' => $userId, 'leave_type' => 8,
+                    'from_date'=>date('Y-m-d'), 'to_date'=>date('Y-m-d'),
+                    'leave_days'=>1, 'existing_balance'=>$getLeaveBalance[0]->current_balance,
+                    'new_balance'=>$getLeaveBalance[0]->current_balance - 1,
+                    'reason'=>'Login After 13:00 PM',
+                    'status'=>'Approved', 'approved_by'=>1]);
+
+                pacraLeavesBalance::where('user_id', '=', $userId)
+                    ->update(['current_balance' => $getLeaveBalance[0]->current_balance - 1]);
+            }
+
+            elseif (($current_time > date("10:30:59") && $current_time < date("13:00:59"))){
+
+                PacraLeavesModel::create(['user_id' => $userId, 'leave_type' => 8,
+                    'from_date'=>date('Y-m-d'), 'to_date'=>date('Y-m-d'),
+                    'leave_days'=>0.50, 'existing_balance'=>$getLeaveBalance[0]->current_balance,
+                    'new_balance'=>$getLeaveBalance[0]->current_balance - 0.50,
+                    'reason'=>'Login After 10:30 AM',
+                    'status'=>'Approved', 'approved_by'=>1]);
+
+                pacraLeavesBalance::where('user_id', '=', $userId)
+                    ->update(['current_balance' => $getLeaveBalance[0]->current_balance - 0.50]);
+            }
+
+            elseif (($current_time > date("09:15:59") && $current_time < date("10:30:59"))){
+                PacraLeavesModel::create(['user_id' => $userId, 'leave_type' => 8,
+                    'from_date'=>date('Y-m-d'), 'to_date'=>date('Y-m-d'),
+                    'leave_days'=>0.25, 'existing_balance'=>$getLeaveBalance[0]->current_balance,
+                    'new_balance'=>$getLeaveBalance[0]->current_balance - 0.25,
+                    'reason'=>'Login After 09:15 AM',
+                    'status'=>'Approved', 'approved_by'=>1]);
+
+                pacraLeavesBalance::where('user_id', '=', $userId)
+                    ->update(['current_balance' => $getLeaveBalance[0]->current_balance - 0.25]);
+                //dd('Deduct 0.25 Leaves - 10AM');
+            }
+
+
+            else{
+
+            }
+
+           // dd('END');
+
+
+            $attendance = AttendanceModel::create(['user_id' => $userId, 'date' => date('Y-m-d'),
+                'log_in_time'=>date("H:i:s"), 'ip_address_login'=>$ip_address,
+                'status'=>$login_status, 'office_hours'=>'00:00:00']);
+        }
+
+        else{
+
+            if($request->punch_in_value == 'punch_in'){
+
+                AttendanceModel::where('date', '=', date('Y-m-d'))
+                    ->where('user_id', '=', $userId)
+                    ->update(['log_out_time' => NULL, 'ip_address_logout'=>NULL]);
+
+
+                /*$attendance = AttendanceModel::create(['user_id' => $userId, 'date' => date('Y-m-d'),
+                    'log_in_time'=>date("H:i:s"), 'ip_address_login'=>$ip_address,
+                    'status'=>$login_status]);*/
+            }
+            else{
+                $office_hours = AttendanceModel::where('date', '=', date('Y-m-d'))
+                    ->where('user_id', '=', $userId)
+                    ->pluck('office_hours');
+
+                $existing_hrs = $office_hours[0];
+
+
+                $maxPunchIn = attendanceActivityModel::where('date', '=', date('Y-m-d'))
+                    ->where('user_id', '=', $userId)
+                    ->where('activity', '=', 'punch_in')
+                    ->orderby('id', 'DESC')
+                    ->limit(1)
+                    ->pluck('time');
+
+
+                $Interval =(strtotime($current_time) - strtotime($maxPunchIn[0]));
+
+                //dd(gmdate("H:i", $Interval));
+
+                $new_hrs= gmdate("H:i", $Interval); //$request->office_hours;
+
+                    $secs = strtotime($existing_hrs)- strtotime("00:00:00");
+                    $office_hours = date("H:i:s",strtotime($new_hrs )+$secs);
+
+
+
+
+
+
+
+
+               // dd($new_hrs);
+
+
+
+                AttendanceModel::where('date', '=', date('Y-m-d'))
+                    ->where('user_id', '=', $userId)
+                    ->update(['log_out_time' => date("H:i:s"), 'ip_address_logout'=>$ip_address, 'office_hours'=>$office_hours]
+                    );
+            }
+
+
+        }
+
+        /*$today_attendance = AttendanceModel::where('date', '=', date('Y-m-d'))
+            ->where('user_id', '=', $userId)
+            ->get();*/
+        return redirect()->back()->with('message', 'Your Attendance has been successfully Marked!');
+    }
+
+
+
+    public function getEmployeeAttendanceReport(Request $request)
+
+    {
+
+        $userId = helpers::get_orignal_id(Auth::id());
+        $this->viewData['meta_title'] = 'Attendance Report';
+
+        $employee_attendance = AttendanceModel::Wherebetween('date', [$request->from_date, $request->to_date])
+            ->where('user_id', '=', $userId)
+            ->leftjoin('pacra_attendance_status', 'status', '=', 'pacra_attendance_status.id')
+            ->orderBy('pacra_attendance.id', 'DESC')
+            ->orderby('date','DESC')
+            ->get();
+
+
+        return view('employee_attendance_report', $this->viewData)
+            ->with('employee_attendance',$employee_attendance);
+    }
+
+
+
+    public function addMarkPresence(Request $request){
+
+        $userId = helpers::get_orignal_id(Auth::id());
+        $reason = $request->reason;
+        PacraPresence::create(['user_id' => $userId, 'date' => date('Y-m-d'), 'reason'=>$reason]);
+        return redirect()->back()->with('message', 'Your Presence has been successfully Marked!');
+    }
+
+
+
+    public function holidays(Request $request){
+
+        $userId = helpers::get_orignal_id(Auth::id());
+        $user_rights=helpers::get_user_rights(Auth::id());
+        $this->viewData['meta_title'] = 'Holidays';
+
+        $allHolidays = holidaysModel::all();
+        //dd($allHolidays);
+        return view('holidays', $this->viewData)
+            ->with('allHolidays', $allHolidays)
+            ->with('user_rights', $user_rights);
+    }
+
+
+    public function holidayForm(Request $request){
+
+
+        $userId = helpers::get_orignal_id(Auth::id());
+        $user_rights=helpers::get_user_rights(Auth::id());
+        $this->viewData['meta_title'] = 'Add Holidays';
+        $holidays_type = DB::table('pacra_holidays_type')
+            ->get();
+
+               if ($request->id == null) {
+                   return view('holiday_form', $this->viewData)
+                       ->with('holidays_type', $holidays_type)
+                       ->with('user_rights', $user_rights);
+        } else {
+                  // dd($request->id);
+
+                   $leave = holidaysModel::select('pacra_holidays.id', 'pacra_holidays.holiday_name', 'pacra_holidays.holiday_type',
+                       'pacra_holidays.from_date', 'pacra_holidays.to_date', 'pacra_holidays.status', 'pacra_holidays_type.title')
+
+                       ->leftjoin('pacra_holidays_type', 'pacra_holidays_type.id', '=', 'pacra_holidays.holiday_type')
+                       ->where('pacra_holidays.id', '=', $request->id)
+                       ->get();
+            //dd($leave);
+            //find($request->id);
+
+
+                   return view('holiday_form', $this->viewData)
+                       ->with('holidays_type', $holidays_type)
+                       ->with('leave',$leave)
+                       ->with('user_rights', $user_rights);
+        }
+
+
+    }
+
+
+    public function addHoliday(Request $request){
+
+       // dd($request->all());
+
+        $userId = helpers::get_orignal_id(Auth::id());
+        $this->viewData['meta_title'] = 'Holidays';
+       // dd($request->all());
+
+        $holiday = holidaysModel::updateOrCreate([
+            //Add unique field combo to match here
+            //For example, perhaps you only want one entry per user:
+            'id'   => $request->recordid,
+        ],[
+            'holiday_name'     => $request->get('holiday_name'),
+            'holiday_type' => $request->get('holiday_type'),
+            'from_date'    => $request->get("from_date"),
+            'to_date'   => $request->get('to_date'),
+            'status'       => $request->get('submit')
+        ]);
+
+        return redirect()->route('holidays');
+
+
+    }
+
+
+
+    public function attendance_report(Request $request)
+
+    {
+        $today_attendance = DB::table('og_users')
+            ->select('og_users.id','og_users.display_name', 'pacra_attendance.date', 'pacra_attendance.log_in_time', 'pacra_attendance.log_out_time')
+            ->leftJoin('pacra_attendance',
+                function($join) {
+                    $join->on('og_users.id', '=', 'pacra_attendance.user_id')
+                        ->where('pacra_attendance.date','=',date("Y-m-d"));
+                })
+
+
+            ->where('is_active', '1')
+            ->whereNotIn('og_users.id', [48,297,298])
+            //->where('pacra_attendance.date','=',date("Y-m-d"))
+
+            ->orderBy('og_users.display_name', 'ASC')
+            ->get();
+
+        return view('today_attendance_report')
+            ->with ('today_attendance', $today_attendance);
+
+    }
+
+
+    public function MbAttendance(Request $request)
+
+    {
+        $this->viewData['meta_title'] = 'Morning Briefing Attendance';
+        $activeEmployees = UsersModel::where('is_active',1)
+             ->whereNotIn('id', [48,297,298])
+            ->whereNotIn('department', [5,6,7,12,13,14,21,22])
+            ->orderBy('display_name')
+            ->get();
+
+        //dd($activeEmployees);
+
+        return view('uploadMbAttendance', $this->viewData)
+            ->with ('activeEmployees', $activeEmployees)
+            ;
+
+    }
+
+
+    public function markMbAttendance(Request $request)
+
+    {
+
+        $leaves = PacraLeavesModel::whereDate('from_date','=',$request->date)->whereDate('to_date','<=',$request->date)
+            ->pluck('user_id')->toArray();
+           // ->where('leave_type', '<>',8)
+            // ->where('status', 'Approved')
+            //->get();
+
+        $getLeaveBalance = pacraLeavesBalance::where('user_id', '=', 125)
+            ->get();
+
+
+        $absentEmp = $request->users;
+
+        $employees=array_diff($absentEmp,$leaves);
+
+       //dd($result);
+        foreach ($employees as $index=>$employee){
+
+            //dd($employee);
+            $getLeaveBalance = pacraLeavesBalance::where('user_id', '=', $employee)
+                ->get();
+//dd($getLeaveBalance);
+            PacraLeavesModel::create([
+
+            'user_id'=> $employee,
+            'leave_type'=> 9,
+            'from_date'=> $request->date,
+            'to_date'=> $request->date,
+            'leave_days'=> 0.25,
+            'existing_balance'=> $getLeaveBalance->first()->current_balance,
+            'new_balance'=> $getLeaveBalance->first()->current_balance - 0.25,
+            'reason'=> 'Absent From Morning Briefing',
+            'status'=> 'Approved',
+            'approved_by'=> 1
+
+
+        ]);
+
+
+            DB::statement("UPDATE  pacra_leaves_balance SET current_balance = current_balance - 0.25
+                 where user_id = $employee");
+
+
+
+        }
+
+        return redirect()->back()->with('message', 'Records Updated successfully....!');
+
+
+    }
+
+    public function editAttendanceRequest(Request $request, $id)
+
+    {
+        $userId = helpers::get_orignal_id(Auth::id());
+        $amId = helpers::get_team_lead(Auth::id());
+        $this->viewData['meta_title'] = 'Edit Attendance';
+        $getAttendanceDetail = AttendanceModel::where('id', $id)->get();
+        $attendanceEditReason = DB::table('pacra_attendance_edit_reason')
+            ->where('isActive','=',1)
+            ->get();
+        $getAttendanceApprovalDetail = '';
+
+
+        return view('editAttendance', $this->viewData)
+            ->with ('attendanceEditReason', $attendanceEditReason)
+            ->with ('getAttendanceDetail', $getAttendanceDetail)
+            ->with ('getAttendanceApprovalDetail', $getAttendanceApprovalDetail)
+            ->with ('userId', $userId)
+            ->with ('amId', $amId)
+            ;
+       // return redirect()->back()->with('message', 'Records Updated successfully....!');
+
+    }
+
+    public function addeditAttendanceRequest(Request $request)
+
+    {
+
+
+
+        $userId = helpers::get_orignal_id(Auth::id());
+        $amId = helpers::get_team_lead(Auth::id());
+        $getAttendanceDetails = AttendanceModel::where('id',$request->attendanceRecordID ) ->get();
+        $leaveData = PacraLeavesModel::where('user_id',$request->user_id )
+            ->where('from_date', $getAttendanceDetails->first()->date )
+            ->get();
+
+        //dd($leaveData->first()->leave_days);
+
+       $userMail = UsersModel::where('id', $request->user_id)
+           ->select('email')
+           ->get();
+        $usermail = $userMail->first()->email;
+        $username= $userMail->first()->display_name;
+
+        $teamleademail = UsersModel::where('id', $request->am_id)
+            ->select('email')
+            ->get();
+        $teamleademail = $teamleademail->first()->email;
+
+        $hrmail = 'kamran.saleem@pacra.com';
+        $portalLink = "<a href='hr.pacra.com'>HRMS</a>";
+
+
+
+        if($request->submit == 'Entered'){
+
+            if ($request->hasFile('file')) {
+                $filenameWithExt = $request->file('file')->getClientOriginalName();
+                $filename = pathinfo($filenameWithExt, PATHINFO_FILENAME);
+                $extension = $request->file('file')->getClientOriginalExtension();
+                $fileNameToStore = $filename . '_' . time() . '.' . $extension;
+                $file_path = $request->file('file')->storeAs('editAttendance/', $fileNameToStore);
+            }
+
+
+        $attendanceRequest = AttendanceEditRequest::updateOrCreate([
+            //Add unique field combo to match here
+            //For example, perhaps you only want one entry per user:
+            'attendance_record'   => $request->attendanceRecordID,
+        ],[
+            'attendance_record' => $request->attendanceRecordID,
+            'user_id' => $userId,
+            'am_id' => $amId,
+            'attendance_edit_reason' => $request->editReason,
+            'old_punch_in' => $request->old_punchIn,
+            'new_punch_in' => $request->punch_in,
+            'attachment' => $file_path,
+            'status' => $request->submit
+           // 'recommendBy' => $request->attendanceRecordID,
+            //'approvedBy' => $request->attendanceRecordID
+        ]);
+
+            //dd('Ok');
+
+            Mail::send([], [], function ($message)use ($request, $teamleademail,$usermail, $hrmail, $username, $portalLink ) {
+
+                $message->to($usermail)
+                    ->subject($username. ' You Applied for Edit Attendance Request')
+                    ->setBody('<h1>Hello! </h1>
+                        <br>'.$username.' Your request for edit attendance successfully submitted. <br>
+                        <h3>URL:</h3>'. $portalLink,  'text/html');
+                $message->from('webmaster@pacra.com', 'Webmaster PACRA');
+            });
+
+
+            Mail::send([], [], function ($message)use ($request, $teamleademail,$usermail, $hrmail, $username, $portalLink ) {
+
+                $message->to($teamleademail)
+                    ->subject($username. ' Applied for Edit Attendance Request')
+                    ->setBody('<h1>Hello! </h1>
+                        <br>'.$username.' Your request for edit attendance successfully submitted. <br>
+                        <h3>URL:</h3>'. $portalLink,  'text/html');
+                $message->from('webmaster@pacra.com', 'Webmaster PACRA');
+            });
+
+
+
+        }
+
+            elseif($request->submit == 'Recommended') {
+
+                $attendanceRequest = AttendanceEditRequest::updateOrCreate([
+                    //Add unique field combo to match here
+                    //For example, perhaps you only want one entry per user:
+                    'attendance_record' => $request->attendanceRecordID,
+                ], [
+                    'attendance_record' => $request->attendanceRecordID,
+                    'attendance_edit_reason' => $request->editReason,
+                    'old_punch_in' => $request->old_punchIn,
+                    'new_punch_in' => $request->punch_in,
+                    'status' => $request->submit,
+                    'recommendBy' => $userId
+                    //'approvedBy' => $request->attendanceRecordID
+                ]);
+
+                Mail::send([], [], function ($message)use ($request, $teamleademail,$usermail, $hrmail, $username, $portalLink ) {
+
+                    $message->to($hrmail)
+                        ->cc($usermail)
+                        ->cc($teamleademail)
+                        ->subject($username. 'Request for Edit Attendance Recommended By TL')
+                        ->setBody('<h1>Hello! </h1>
+                        <br>'.$username.' Request for Edit Attendance Recommended By TL. Please Authenticate. <br>
+                        <h3>URL:</h3>'. $portalLink,  'text/html');
+                    $message->from('webmaster@pacra.com', 'Webmaster PACRA');
+                });
+
+
+            }
+
+        elseif($request->submit == 'Declined') {
+
+            $attendanceRequest = AttendanceEditRequest::updateOrCreate([
+                //Add unique field combo to match here
+                //For example, perhaps you only want one entry per user:
+                'attendance_record' => $request->attendanceRecordID,
+            ], [
+                'attendance_record' => $request->attendanceRecordID,
+                'attendance_edit_reason' => $request->editReason,
+                'old_punch_in' => $request->old_punchIn,
+                'new_punch_in' => $request->punch_in,
+                'status' => $request->submit,
+                'recommendBy' => $userId,
+                'approvedBy' => $userId
+            ]);
+
+            Mail::send([], [], function ($message)use ($request, $teamleademail,$usermail, $hrmail, $username, $portalLink ) {
+
+                $message->to($usermail)
+                    ->cc($teamleademail)
+                    ->subject($username. ' TL Declined Edit Attendance Request')
+                    ->setBody('<h1>Hello! </h1>
+                        <br> Your Team Lead Declined Your Edit Attendance Request. <br>
+                        <h3>URL:</h3>'. $portalLink,  'text/html');
+                $message->from('webmaster@pacra.com', 'Webmaster PACRA');
+            });
+
+
+        }
+
+        elseif($request->submit == 'Approved') {
+
+
+
+            $attendanceRequest = AttendanceEditRequest::updateOrCreate([
+                //Add unique field combo to match here
+                //For example, perhaps you only want one entry per user:
+                'attendance_record' => $request->attendanceRecordID,
+            ], [
+                'attendance_record' => $request->attendanceRecordID,
+                'attendance_edit_reason' => $request->editReason,
+                'old_punch_in' => $request->old_punchIn,
+                'new_punch_in' => $request->punch_in,
+                'status' => $request->submit,
+                'approvedBy' => $userId
+            ]);
+
+            AttendanceModel::updateOrCreate([
+                //Add unique field combo to match here
+                //For example, perhaps you only want one entry per user:
+                'id' =>$request->attendanceRecordID,
+                'user_id'   => $request->user_id,
+                'date'   => $getAttendanceDetails->first()->date,
+            ],[
+                'user_id' => $request->user_id,
+                'log_in_time'=>$request->punch_in,
+                'status'=>2,
+
+            ]);
+
+            $leaves = $leaveData->first()->leave_days;
+            DB::statement("UPDATE  pacra_leaves_balance SET current_balance = current_balance + $leaves
+                 where user_id = $request->user_id");
+
+
+            $affectedRows = PacraLeavesModel::where('id', $leaveData->first()->id )->delete();
+
+
+
+
+
+
+            Mail::send([], [], function ($message)use ($request, $teamleademail,$usermail, $hrmail, $username, $portalLink ) {
+
+                $message->to($usermail)
+                    ->cc($teamleademail)
+                    ->cc($hrmail)
+                    ->subject('HR Authenticate Your Edit Attendance Request')
+                    ->setBody('<h1>Hello! </h1>
+                        <br>'.$username.' HR Authenticate Your Edit Attendance Request. <br>
+                        <br>  <br>
+                        <h3>URL:</h3>'. $portalLink,  'text/html');
+                $message->from('webmaster@pacra.com', 'Webmaster PACRA');
+            });
+        }
+
+            return redirect()->route('attendance_employee');
+
+
+
+    }
+
+    public function editAttendanceRequestList(Request $request)
+
+    {
+        $this->viewData['meta_title'] = 'Edit Attendance Approvals';
+        $userId = helpers::get_orignal_id(Auth::id());
+        $user_rights=helpers::get_user_rights(Auth::id());
+
+       $getAttendanceEditRequestList = AttendanceEditRequest::where('pacra_attendance_edit_request.am_id', $userId)
+           ->select('og_users.display_name', 'og_users.avatar_file', 'og_designations.title as designation',
+               'pacra_attendance_edit_request.id', 'pacra_attendance_edit_request.attendance_record as attendance_record',
+               'pacra_attendance_edit_request.user_id', 'pacra_attendance_edit_request.am_id',
+               'pacra_attendance_edit_request.attendance_edit_reason',
+               'pacra_attendance_edit_request.old_punch_in', 'pacra_attendance_edit_request.new_punch_in',
+               'pacra_attendance_edit_request.attachment', 'pacra_attendance_edit_request.status',
+               'pacra_attendance_edit_reason.title as reason', 'pacra_attendance.date'
+               )
+           ->leftJoin('og_users', 'og_users.id', '=', 'pacra_attendance_edit_request.user_id')
+           ->leftjoin('og_designations', 'og_designations.id', '=', 'og_users.designation_id')
+           ->leftJoin('pacra_attendance', 'pacra_attendance.id', '=', 'pacra_attendance_edit_request.attendance_record')
+           ->leftJoin('pacra_attendance_edit_reason', 'pacra_attendance_edit_reason.id', '=', 'pacra_attendance_edit_request.attendance_edit_reason')
+           ->where('pacra_attendance_edit_request.status', 'Entered')
+           ->get();
+
+
+        return view('attendance_edit_approval_list', $this->viewData)
+            ->with ('getAttendanceEditRequestList', $getAttendanceEditRequestList)
+            ->with ('user_rights', $user_rights)
+
+            ;
+
+
+    }
+
+    public function editAttendanceRequestListHR(Request $request)
+
+    {
+        $this->viewData['meta_title'] = 'Edit Attendance Approvals';
+        $userId = helpers::get_orignal_id(Auth::id());
+        $user_rights=helpers::get_user_rights(Auth::id());
+
+        $getAttendanceEditRequestList = AttendanceEditRequest::where('pacra_attendance_edit_request.status', 'Recommended')
+            ->select('og_users.display_name', 'og_users.avatar_file', 'og_designations.title as designation',
+                'pacra_attendance_edit_request.id', 'pacra_attendance_edit_request.attendance_record as attendance_record',
+                'pacra_attendance_edit_request.user_id', 'pacra_attendance_edit_request.am_id',
+                'pacra_attendance_edit_request.attendance_edit_reason',
+                'pacra_attendance_edit_request.old_punch_in', 'pacra_attendance_edit_request.new_punch_in',
+                'pacra_attendance_edit_request.attachment','pacra_attendance_edit_request.status',
+                'pacra_attendance_edit_reason.title as reason', 'pacra_attendance.date'
+            )
+            ->leftJoin('og_users', 'og_users.id', '=', 'pacra_attendance_edit_request.user_id')
+            ->leftJoin('pacra_attendance', 'pacra_attendance.id', '=', 'pacra_attendance_edit_request.attendance_record')
+            ->leftjoin('og_designations', 'og_designations.id', '=', 'og_users.designation_id')
+            ->leftJoin('pacra_attendance_edit_reason', 'pacra_attendance_edit_reason.id', '=', 'pacra_attendance_edit_request.attendance_edit_reason')
+
+            ->get();
+
+
+        return view('attendance_edit_approval_list', $this->viewData)
+            ->with ('getAttendanceEditRequestList', $getAttendanceEditRequestList)
+            ->with ('user_rights', $user_rights)
+
+            ;
+
+
+    }
+
+
+
+    public function editAttendanceRequestApproval(Request $request, $id)
+
+    {
+        $this->viewData['meta_title'] = 'Edit Attendance Approvals';
+        $userId = helpers::get_orignal_id(Auth::id());
+        $user_rights=helpers::get_user_rights(Auth::id());
+
+
+        $getAttendanceApprovalDetail = AttendanceEditRequest::where('attendance_record', $id)
+            ->select('pacra_attendance.date','pacra_attendance_edit_request.id', 'pacra_attendance_edit_request.attendance_record as attendance_record',
+                'pacra_attendance_edit_request.user_id', 'pacra_attendance_edit_request.am_id',
+                'pacra_attendance_edit_request.attendance_edit_reason',
+                'pacra_attendance_edit_request.old_punch_in', 'pacra_attendance_edit_request.new_punch_in',
+                'pacra_attendance_edit_request.status', 'pacra_attendance_edit_reason.title as reason',
+                'pacra_attendance_edit_request.attachment')
+            ->leftJoin('pacra_attendance', 'pacra_attendance.id', '=', 'pacra_attendance_edit_request.attendance_record' )
+            ->leftJoin('pacra_attendance_edit_reason', 'pacra_attendance_edit_reason.id', '=', 'pacra_attendance_edit_request.attendance_edit_reason')
+
+
+            ->get();
+
+        //dd($getAttendanceApprovalDetail);
+
+        $attendanceEditReason = DB::table('pacra_attendance_edit_reason')
+            ->where('isActive','=',1)
+            ->get();
+        return view('editAttendance', $this->viewData)
+            ->with ('attendanceEditReason', $attendanceEditReason)
+            ->with ('getAttendanceApprovalDetail', $getAttendanceApprovalDetail)
+            ->with ('user_rights', $user_rights)
+            ;
+
+
+
+
+    }
+
+
+    public function editAttendanceRequestReport(Request $request)
+
+    {
+        $this->viewData['meta_title'] = 'Edit Attendance Approvals';
+        $userId = helpers::get_orignal_id(Auth::id());
+        $user_rights=helpers::get_user_rights(Auth::id());
+
+        $getAttendanceEditRequestList = '';
+        $getAttendanceEditRequestList= AttendanceEditRequest::where('pacra_attendance_edit_request.status', 'Approved')
+            ->select('og_users.display_name', 'og_users.avatar_file', 'og_designations.title as designation',
+                'pacra_attendance_edit_request.id', 'pacra_attendance_edit_request.attendance_record as attendance_record',
+                'pacra_attendance_edit_request.user_id', 'pacra_attendance_edit_request.am_id',
+                'pacra_attendance_edit_request.attendance_edit_reason',
+                'pacra_attendance_edit_request.old_punch_in', 'pacra_attendance_edit_request.new_punch_in',
+                'pacra_attendance_edit_request.attachment','pacra_attendance_edit_request.status',
+                'pacra_attendance_edit_reason.title as reason', 'pacra_attendance.date'
+            )
+            ->leftJoin('og_users', 'og_users.id', '=', 'pacra_attendance_edit_request.user_id')
+            ->leftjoin('og_designations', 'og_designations.id', '=', 'og_users.designation_id')
+            ->leftJoin('pacra_attendance', 'pacra_attendance.id', '=', 'pacra_attendance_edit_request.attendance_record')
+            ->leftJoin('pacra_attendance_edit_reason', 'pacra_attendance_edit_reason.id', '=', 'pacra_attendance_edit_request.attendance_edit_reason')
+            ->get();
+
+        //dd($getAttendanceEditRequestListHR);
+
+        return view('attendance_edit_approval_list', $this->viewData)
+            ->with ('getAttendanceEditRequestList', $getAttendanceEditRequestList)
+
+            ->with ('user_rights', $user_rights)
+
+            ;
+
+
+
+    }
+
+
+
+
+}

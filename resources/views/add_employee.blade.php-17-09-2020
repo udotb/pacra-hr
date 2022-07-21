@@ -1,0 +1,255 @@
+@extends('layout.mainlayout')
+@section('content')
+
+
+{{--{{dd(rand(500,1000))}}--}}
+
+
+    <!-- Page Wrapper -->
+    <div class="page-wrapper">
+
+        <!-- Page Content -->
+        <div class="content container-fluid">
+
+            <!-- Page Header -->
+            <div class="page-header">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <h3 class="page-title">{{!empty($meta_title) ? $meta_title: 'Employee'}}</h3>
+                        <ul class="breadcrumb">
+                            <li class="breadcrumb-item"><a href="index">Dashboard</a></li>
+                            <li class="breadcrumb-item active">{{!empty($meta_title) ? $meta_title: 'Employee'}}</li>
+                        </ul>
+                    </div>
+
+                </div>
+            </div>
+            <!-- /Page Header -->
+
+
+            <form method="POST" action="{{ route('add_employee') }}" method="post" enctype="multipart/form-data" files="true">
+                @csrf
+                <div class="row">
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">First Name <span class="text-danger">*</span></label>
+                            <input class="form-control" name="fname" type="text" required="required">
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Last Name <span class="text-danger">*</span></label>
+                            <input class="form-control" name="lname" type="text" required="required">
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Username <span class="text-danger">*</span></label>
+                            <input class="form-control" name="uname" type="text" required="required">
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Email <span class="text-danger">*</span></label>
+                            <input class="form-control" name="email" type="email" required="required">
+                        </div>
+                    </div>
+
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Employee ID <span class="text-danger">*</span></label>
+                            <input type="text" name="emp_id" class="form-control" required="required">
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Joining Date <span class="text-danger">*</span></label>
+                            <div class=""><input class="form-control" name="doj" type="date" required="required"></div>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Confirmation Date <span class="text-danger">*</span></label>
+                            <div class=""><input class="form-control" name="c_date" type="date" required="required"></div>
+                        </div>
+                    </div>
+
+
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>Function <span class="text-danger">*</span></label>
+                            <select class="select" name="dpt"  required="required">
+                                <option value="">Select Function</option>
+                                @foreach($departments as $dep)
+
+                                    <option value="{{$dep->id}}">{{$dep->title}}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>Designation <span class="text-danger">*</span></label>
+                            <select class="select" name="desg" required="required">
+                                <option value="">Select Designation</option>
+                                @foreach($designations as $desg)
+
+                                    <option value="{{$desg->id}}">{{$desg->title}}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">CNIC <span class="text-danger">*</span></label>
+                            <div class="">
+
+                                <input class="form-control" type="text"   placeholder="XXXXX-XXXXXXX-X"  name="cnic" required="required" >
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Contact <span class="text-danger">*</span></label>
+                            <div class=""><input class="form-control" name="phone" type="tel" pattern="[0-9]{4}[0-9]{7}" placeholder="XXXX-XXXXXXX" required="required"></div>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Emergency Contact <span class="text-danger">*</span> </label>
+                            <div class=""><input class="form-control" name="emg_phone" type="tel" pattern="[0-9]{4}[0-9]{7}" placeholder="0321-1234567" required="required"></div>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Birthday <span class="text-danger">*</span></label>
+                            <div class=""><input class="form-control" name="dob" type="date" required="required"></div>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Nationality <span class="text-danger">*</span></label>
+
+                                <select class="select" name="nationality" required="required">
+                                    <option value="">Select Nationality</option>
+                                    @foreach($nationality as $nation)
+                                        <option value="{{$nation->id}}">{{$nation->title}}</option>
+                                    @endforeach
+                                </select>
+
+                        </div>
+                    </div>
+
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Religion <span class="text-danger">*</span></label>
+                            <select class="select" name="religion" required="required">
+                                <option value="">Select Religion</option>
+                                @foreach($religions as $religion)
+                                    <option value="{{$religion->id}}">{{$religion->title}}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Gender <span class="text-danger">*</span></label>
+                            <select class="select" name="gender" required="required">
+                                <option value="">Select Gender</option>
+                                @foreach($genders as $gender)
+                                    <option value="{{$gender->id}}">{{$gender->title}}</option>
+                                @endforeach
+                            </select>
+
+                        </div>
+                    </div>
+
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Marital Status <span class="text-danger">*</span></label>
+                            <select class="select" name="marital" required="required">
+                                <option value="">Select Marital Status</option>
+                                @foreach($maritals as $marital)
+                                    <option value="{{$marital->id}}">{{$marital->title}}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Reports To <span class="text-danger">*</span></label>
+                            <select class="select" name="report_to" required="required">
+                                <option value="">Select Reports to</option>
+                                @foreach($all_users as $users)
+                                    <option value="{{$users->id}}">{{$users->display_name}}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Linkedin <span class="text-danger">*</span></label>
+                            <input class="form-control" name="linkedin" type="text">
+                        </div>
+                    </div>
+
+
+
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Show on Website <span class="text-danger">*</span></label>
+                            <select class="select" name="web_check" required="required">
+                                    <option value="0">No</option>
+                                    <option value="1">Yes</option>
+                            </select>
+
+                        </div>
+                    </div>
+
+                    <div class="col-sm-12">
+                        <div class="form-group">
+                            <label class="col-form-label">Address <span class="text-danger">*</span></label>
+                            <input class="form-control" name="address" type="text" required="required">
+                        </div>
+                    </div>
+
+
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Upload Image<span class="text-danger">*</span></label>
+                            <input type="file" name="image" id="image" >
+                            <small id="fileHelp" class="form-text text-muted">Please upload a valid image file.</small>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label class="col-form-label">Upload CV<span class="text-danger">*</span></label>
+                            <input type="file" name="file" id="file" >
+                            <small id="fileHelp" class="form-text text-muted">Please upload a valid file.</small>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="submit-section">
+                    <button class="btn btn-primary submit-btn">Submit</button>
+                </div>
+            </form>
+
+        <!-- /Page Content -->
+
+
+
+    </div>
+    <!-- /Page Wrapper -->
+@endsection

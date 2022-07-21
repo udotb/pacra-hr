@@ -1,0 +1,409 @@
+<?php
+
+namespace App\Http\Controllers\Employees;
+
+use App\Http\Controllers\Controller;
+use App\Models\Employees\DepartmentModel;
+use App\Models\Employees\DesignationsModel;
+use App\Models\Employees\UsersModel;
+use App\Models\Leaves\pacraLeavesBalance;
+use App\Models\Leaves\pacraNegativeLeavesBalance;
+use Illuminate\Http\Request;
+use App\Helpers\helpers;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
+use DB;
+use DateTime;
+use Image;
+use Illuminate\Support\Facades\Hash;
+Use Illuminate\Support\Facades\Mail;
+
+
+class EmployeeController extends Controller
+{
+    public function getDeparment(Request $request)
+
+    {
+        $this->viewData['meta_title'] = 'Departments';
+        $getDepartments = DepartmentModel::where('isActive', '=', '1')
+            ->get() ;
+        return view('departments', $this->viewData)
+            ->with('getDepartments', $getDepartments);
+
+    }
+
+    public function updateDeparment(Request $request)
+
+    {
+        $userId = helpers::get_orignal_id(Auth::id());
+
+        DepartmentModel::where('id', '=', $request->dpt_id)
+            ->update(['title' => $request->dpt_name, 'status' => 'Entered', 'last_updated_by' => $userId ]);
+        return redirect()->back()->with('message', 'Record Updated Successfully.');
+    }
+
+
+
+    public function createDeparment (Request $request)
+
+    {
+        $userId = helpers::get_orignal_id(Auth::id());
+        DepartmentModel::create(['title' => $request->dpt_name, 'status' => 'Entered',
+            'isActive'=> 1 , 'last_updated_by'=>$userId]);
+        return redirect()->back()->with('message', 'Record Updated Successfully.');
+    }
+
+
+    public function getDesignations (Request $request)
+    {
+        $this->viewData['meta_title'] = 'Designation';
+        $getDesignation = DesignationsModel::where('isActive', '=', '1')
+            ->get();
+        return view('designations', $this->viewData)
+            ->with('getDesignation', $getDesignation);
+    }
+
+    public function updateDesignations (Request $request)
+    {
+        $userId = helpers::get_orignal_id(Auth::id());
+
+       DesignationsModel::where('id', '=', $request->desg_id)
+           ->update(['title' => $request->desg_name, 'status' => 'Entered', 'last_updated_by' => $userId ]);
+        return redirect()->back()->with('message', 'Record Updated Successfully.');
+    }
+
+    public function createDesignations (Request $request)
+    {
+        $userId = helpers::get_orignal_id(Auth::id());
+        DesignationsModel::create(['title' => $request->desg_name, 'status' => 'Entered',
+            'isActive'=> 1 , 'last_updated_by'=>$userId]);
+        return redirect()->back()->with('message', 'Record Edit Successfully.');
+    }
+
+    public function getEmployees (Request $request)
+    {
+        $this->viewData['meta_title'] = 'Employees';
+        $userId = helpers::get_orignal_id(Auth::id());
+
+        $all_users = UsersModel::where('is_active', '=', 1)
+            ->where('og_users.status', '=', 'Approved')
+            ->select('og_users.*','og_designations.title as desig')
+            ->leftjoin('og_designations', 'og_designations.id', '=', 'designation_id' )
+        ->get();
+        return view('employees', $this->viewData)
+            ->with('all_users', $all_users);
+    }
+
+    public function editEmployees (Request $request)
+    {
+        $this->viewData['meta_title'] = 'Edit Employee';
+        $user_rights=helpers::get_user_rights(Auth::id());
+
+
+        $get_emp_data = UsersModel::where('og_users.id', '=', $request->id)
+            ->select('og_users.*','og_designations.title as desig', 'pacra_teams.title as dpt' )
+            ->leftjoin('og_designations', 'og_designations.id', '=', 'designation_id' )
+            ->leftjoin('pacra_teams', 'pacra_teams.id', '=', 'team_id' )
+            ->get();
+
+        $get_cleaves_bal = pacraLeavesBalance::where('user_id', '=', $request->id)
+                            ->get();
+        $getnLeaves_bal = pacraNegativeLeavesBalance::where('user_id', '=', $request->id)
+            ->get();
+
+        //$get_emp_data = $request->id;
+
+       // dd($get_emp_data);
+
+        $departments = DepartmentModel::where('isActive', '=', 1)
+            ->get();
+        $designations = DesignationsModel::where('isActive', '=', 1)
+            ->get();
+        return view('edit_employee', $this->viewData)
+            ->with('get_emp_data',$get_emp_data)
+            ->with('departments', $departments)
+            ->with('designations', $designations)
+            ->with('user_rights', $user_rights)
+            ->with('get_cleaves_bal', $get_cleaves_bal)
+            ->with('getnLeaves_bal', $getnLeaves_bal);
+    }
+
+    public function updateEmployees (Request $request)
+    {
+        //dd($request->all());
+        $userId = helpers::get_orignal_id(Auth::id());
+        $this->viewData['meta_title'] = 'Edit Employee';
+
+        if($request->submit == 'submit'){
+
+            UsersModel::where('id', '=', $request->og_users_id)
+                ->update(['updated_by_id' =>$userId ,'doj' => $request->doj, 'team_id'=>$request->dpt,
+                    'employee_id'=>$request->emp_id,
+                    'designation_id'=>$request->desg,
+                    'status' => 'Entered']);
+
+            pacraLeavesBalance::create(['user_id' => $request->og_users_id, 'current_balance' =>$request->c_leaves ,
+                'last_updated_by'=> $userId]);
+
+            if($request->n_leaves !=''){
+            pacraNegativeLeavesBalance::create(['user_id' => $request->og_users_id, 'negative_balance' =>$request->n_leaves ]);
+            }
+        }
+        else{
+            UsersModel::where('id', '=', $request->og_users_id)
+                ->update(['updated_by_id' =>$userId ,'doj' => $request->doj, 'team_id'=>$request->dpt,
+                    'employee_id'=>$request->emp_id,
+                    'designation_id'=>$request->desg,
+                    'status' => 'Approved']);
+
+            pacraLeavesBalance::where('user_id', '=', $request->og_users_id)
+                ->update(['current_balance' =>$request->c_leaves , 'last_updated_by'=> $userId]);
+            if($request->n_leaves !='') {
+                pacraNegativeLeavesBalance::where('user_id', '=', $request->og_users_id)
+                    ->update(['negative_balance' => $request->n_leaves]);
+            }
+        }
+
+
+        return redirect()->route('employees');
+
+
+
+        /* $all_users = UsersModel::where('is_active', '=', 1)
+             ->where('og_users.status', '=', 'Approved')
+             ->select('og_users.*','og_designations.title as desig')
+             ->leftjoin('og_designations', 'og_designations.id', '=', 'designation_id' )
+             ->get();
+
+         return view('employees', $this->viewData)
+             ->with('all_users', $all_users);*/
+
+
+    }
+
+
+    public function getEmployeesApproval (Request $request)
+    {
+        $this->viewData['meta_title'] = 'Employee Approval';
+        $user_rights=helpers::get_user_rights(Auth::id());
+
+        $all_users = UsersModel::where('is_active', '=', 1)
+            ->where('og_users.status', '=', 'Entered')
+            ->select('og_users.*','og_designations.title as desig')
+            ->leftjoin('og_designations', 'og_designations.id', '=', 'designation_id' )
+            ->get();
+        return view('employees', $this->viewData)
+            ->with('all_users', $all_users);
+    }
+
+
+    public function addEmployees (Request $request)
+    {
+        $this->viewData['meta_title'] = 'Add Employee';
+        $user_rights=helpers::get_user_rights(Auth::id());
+
+        $all_users = UsersModel::where('is_active', '=', 1)
+            ->get();
+        $gender = DB::table('users')->get();
+
+
+        $departments = DepartmentModel::where('isActive', '=', 1)
+            ->get();
+        $designations = DesignationsModel::where('isActive', '=', 1)
+            ->get();
+        $nationality =  DB::table('pacra_nationality')->get();
+        $religions =  DB::table('pacra_religion')->get();
+        $genders =  DB::table('pacra_gender')->get();
+        $maritals =  DB::table('pacra_marital_status')->get();
+
+        return view('add_employee', $this->viewData)
+            ->with('departments', $departments)
+            ->with('designations', $designations)
+            ->with('nationality', $nationality)
+            ->with('religions', $religions)
+            ->with('genders', $genders)
+            ->with('maritals', $maritals)
+            ->with('user_rights', $user_rights)
+            ->with('all_users', $all_users);
+
+    }
+
+
+    public function addNewEmployees (Request $request)
+
+    {
+
+        $char = substr(str_shuffle("!@_#$%^&*"), 0, 1);
+        $num = rand(500,1000);
+        $simplePassword = 'PACRA'.$char.$num;
+        $password = Hash::make('PACRA'.$char.$num);
+
+        $this->viewData['meta_title'] = 'Employee Details';
+        $userId = helpers::get_orignal_id(Auth::id());
+
+
+        if ($request->hasFile('file')) {
+            // Get filename with extension
+
+            $filenameWithExt = $request->file('file')->getClientOriginalName();
+            // Get just filename
+            $filename = pathinfo($filenameWithExt, PATHINFO_FILENAME);
+            // Get just ext
+            $extension = $request->file('file')->getClientOriginalExtension();
+            //Filename to store
+            $fileNameToStore = $filename . '_' . time() . '.' . $extension;
+            // Upload File
+            $file_path = $request->file('file')->storeAs('cv/', $fileNameToStore);
+
+             //dd($file_path);
+
+        }
+
+
+
+
+
+        if ($request->hasFile('image')) {
+
+            // Get filename with extension
+
+            $filenameWithExt = $request->file('image')->getClientOriginalName();
+            // Get just filename
+            $filename = pathinfo($filenameWithExt, PATHINFO_FILENAME);
+            // Get just ext
+            $extension = $request->file('image')->getClientOriginalExtension();
+            //Filename to store
+            $fileNameToStore = $filename . '_' . time() . '.' . $extension;
+            // Upload Image
+
+            $filename = $request->file('image')->getClientOriginalName();
+            $imageObj = $request->file('image');
+
+            $process_Image = Image::make($imageObj);
+            $process_Image->resize(300, 300);
+            $process_Image->greyscale();
+
+            // dd($filenameWithExt);
+            //$process_Image->save(public_path('publications/' . $filename));
+            $process_Image->save('users/' . $fileNameToStore);
+            $image_path = $process_Image->filename . '.' . $process_Image->extension;
+        }
+
+
+        DB::table('users')->insert(
+            ['first_name' => $request->fname,
+                'first_name' => $request->fname,
+                'last_name' => $request->lname,
+                'email' => $request->email,
+                'avatar_location' => $image_path,
+                'password' => $password,
+                'active' => '1']
+        );
+
+            $newu_id = DB::table('users')->where('email', $request->email)->pluck('id');
+
+        UsersModel::create(['employee_id'=>$request->emp_id,
+            'fname'=>$request->fname,
+            'lname'=>$request->lname,
+            'username'=>$request->uname,
+            'email'=>$request->email,
+            'doj'=>$request->doj,
+            'confirmation_date'=>$request->c_date,
+            'department'=>$request->dpt,
+            'cnic'=>$request->cnic,
+            'phone'=>$request->phone,
+            'emergency_contact'=>$request->emg_phone,
+            'birthday'=>$request->dob,
+            'nationality'=>$request->nationality,
+            'religion'=>$request->religion,
+            'marital_status'=>$request->marital,
+            'address'=>$request->address,
+            'gender'=>$request->gender,
+            'display_name'=>$request->fname.' '.$request->lname,
+            'avatar_file'=>$image_path,
+            'cv'=>$file_path,
+            'created_by_id'=>$userId,
+            'designation_id'=>$request->desg,
+            'team_id'=>$request->dpt,
+            'am_id'=>$request->report_to,
+            'is_active'=>'1',
+            'password'=>$simplePassword,
+            'newu_id'=>$newu_id[0],
+            'linkedin'=>$request->linkedin,
+            'profile_on_web'=>$request->web_check,
+            'status'=>'Entered']);
+
+        Mail::send([], [], function ($message)use ($request, $simplePassword) {
+
+                $message->to($request->email, $request->lname)->subject
+                ('User Credentials')
+
+                    ->setBody('<h1>Hi, welcome '.$request->lname.' ! </h1>
+                        <br>Welcome To PACRA<br> Here is your WizPac Credentials<br> 
+                        <h3>Email:</h3>'.$request->email.'<br> <h3>Password:</h3>'. $simplePassword.'<br> <br>',  'text/html');
+                $message->from('webmaster@pacra.com', 'Webmaster PACRA');
+            });
+
+
+
+            /*$userDetails = UsersModel::Where('email', '=', $request->email )->get();*/
+            return redirect()->route('employees');
+
+
+           // dd($request->all());
+
+
+
+
+
+    }
+
+
+
+    public function profile ($id)
+    {
+
+        $userDetails = UsersModel::select('og_users.id', 'og_users.employee_id', 'og_users.fname', 'og_users.lname',
+            'og_users.username', 'og_users.email', 'og_users.doj', 'og_users.department',
+            'og_users.phone', 'og_users.birthday', 'og_users.address', 'og_users.gender', 'og_users.display_name',
+            'og_users.avatar_file', 'og_users.designation_id', 'og_users.team_id', 'og_users.am_id', 'og_users.linkedin',
+
+            'og_users.cnic', 'og_users.emergency_contact', 'og_users.nationality',
+            'og_users.religion', 'og_users.marital_status', 'og_users.confirmation_date',
+
+            'teams.title as team', 'desig.title as designation', 'genders.title as genderTitle',
+            'manager.display_name as report_to', 'manager.avatar_file as managerpic'
+            )
+
+            ->leftJoin('pacra_teams as teams', 'teams.id', '=', 'og_users.team_id')
+            ->leftJoin('og_designations as desig', 'desig.id', '=', 'og_users.designation_id')
+            ->leftJoin('pacra_gender as genders', 'genders.id', '=', 'og_users.gender')
+            ->leftJoin('og_users as manager', 'manager.id', '=', 'og_users.am_id')
+            ->Where('og_users.id', '=', $id )
+
+
+            ->get();
+        $this->viewData['meta_title'] = $userDetails[0]->display_name;
+
+        return view('profile', $this->viewData)
+            ->with('userDetails', $userDetails);
+
+
+    }
+
+    public function profileUpdate(Request $request)
+    {
+        $input = $request->all();
+        dd($input);
+       // $updateUserDetails =
+        return response()->json($input);
+    }
+
+
+
+
+
+
+
+
+}

@@ -1,0 +1,15 @@
+<?php
+
+
+namespace App\Models\Attendance;
+
+use Illuminate\Database\Eloquent\Model;
+
+class AttendanceModel extends Model
+{
+
+    protected $table = 'pacra_attendance';
+    protected  $fillable =['id', 'user_id', 'date', 'log_in_time', 'log_out_time', 'ip_address_login','ip_address_logout','status'];
+    public $timestamps = true;
+
+}

@@ -1,0 +1,183 @@
+<?php
+
+namespace App\Http\Controllers\Attendance;
+
+use App\Helpers\helpers;
+use App\Http\Controllers\Controller;
+use App\Models\Attendance\AttendanceModel;
+use App\Models\attendance\PacraPresence;
+use App\Models\holidaysModel;
+use App\Models\Leaves\PacraLeavesModel;
+use App\Models\Leaves\PacraLeavesTypeModel;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
+use DB;
+use DateTime;
+
+class AttendanceController extends Controller
+{
+
+    public function attendanceEmployee(Request $request)
+
+    {
+
+        $userId = helpers::get_orignal_id(Auth::id());
+        $this->viewData['meta_title'] = 'My Board';
+
+        $ip_address =$request->ip();
+        $today_attendance = AttendanceModel::where('date', '=', date('Y-m-d'))
+            ->where('user_id', '=', $userId)
+            ->get();
+        $last_two_days_attendance = AttendanceModel::
+            where('user_id', '=', $userId)
+            ->leftjoin('pacra_attendance_status', 'status', '=', 'pacra_attendance_status.id')
+            ->orderBy('pacra_attendance.id', 'DESC')
+            ->Limit(3)
+            ->get();
+
+        $leaves_types = PacraLeavesTypeModel::where('isActive', '=', '1')->get() ;
+
+        $ontime_statistics = AttendanceModel::Where('user_id', '=', $userId)
+            ->whereTime('log_in_time', '<=', \Carbon\Carbon::parse('09:00:00'))->count();
+
+        $late_statistics = AttendanceModel::Where('user_id', '=', $userId)
+            ->whereTime('log_in_time', '>', \Carbon\Carbon::parse('09:01:00'))->count();
+
+        $absent_statistics = AttendanceModel::Where('user_id', '=', $userId)
+            ->where('log_in_time', '=', NULL)->count();
+
+
+
+        return view('attendance_employee', $this->viewData)
+            ->with ('ip_address', $ip_address)
+            ->with ('today_attendance', $today_attendance)
+            ->with ('last_two_days_attendance', $last_two_days_attendance)
+            ->with ('leaves_types', $leaves_types)
+            ->with ('ontime_statistics', $ontime_statistics)
+            ->with ('late_statistics', $late_statistics)
+            ->with ('absent_statistics', $absent_statistics);
+    }
+
+
+    public function addMarkAttendance(Request $request)
+
+    {
+        $userId = helpers::get_orignal_id(Auth::id());
+
+       // dd($request->all());
+        $ip_address =$request->ip();
+        if (date("H:i:s") > date("09:01:00") )
+            $login_status = 1;
+        else
+            $login_status = 2;
+        if($request->punch_in_value == 'punch_in'){
+            $attendance = AttendanceModel::create(['user_id' => $userId, 'date' => date('Y-m-d'),
+                'log_in_time'=>date("H:i:s"), 'ip_address_login'=>$ip_address,
+                'status'=>$login_status]);
+        }
+        else{
+            AttendanceModel::where('date', '=', date('Y-m-d'))
+                ->where('user_id', '=', $userId)
+                ->update(['log_out_time' => date("H:i:s"), 'ip_address_logout'=>$ip_address]);
+        }
+        /*$today_attendance = AttendanceModel::where('date', '=', date('Y-m-d'))
+            ->where('user_id', '=', $userId)
+            ->get();*/
+        return redirect()->back()->with('message', 'Your Attendance has been successfully Marked!');
+    }
+
+
+
+    public function getEmployeeAttendanceReport(Request $request)
+
+    {
+
+        $userId = helpers::get_orignal_id(Auth::id());
+        $this->viewData['meta_title'] = 'Attendance Report';
+
+        $employee_attendance = AttendanceModel::Wherebetween('date', [$request->from_date, $request->to_date])
+            ->where('user_id', '=', $userId)
+            ->leftjoin('pacra_attendance_status', 'status', '=', 'pacra_attendance_status.id')
+            ->orderBy('pacra_attendance.id', 'DESC')
+            ->orderby('date','DESC')
+            ->get();
+
+
+        return view('employee_attendance_report', $this->viewData)
+            ->with('employee_attendance',$employee_attendance);
+    }
+
+
+
+    public function addMarkPresence(Request $request){
+
+        $userId = helpers::get_orignal_id(Auth::id());
+        $reason = $request->reason;
+        PacraPresence::create(['user_id' => $userId, 'date' => date('Y-m-d'), 'reason'=>$reason]);
+        return redirect()->back()->with('message', 'Your Presence has been successfully Marked!');
+    }
+
+    public function addLeaves(Request $request){
+        $userId = helpers::get_orignal_id(Auth::id());
+
+        $origin = new DateTime($request->from_date);
+        $target = new DateTime($request->to_date);
+        $interval = $origin->diff($target);
+        $leave_days = $interval->format('%a')+1;
+
+        //dd($request->all());
+
+        PacraLeavesModel::create(['user_id'=>$userId, 'leave_type'=>$request->leave_type, 'from_date'=>$request->from_date,
+        'to_date'=>$request->to_date, 'leave_days'=>$leave_days, 'reason'=>$request->reason,
+        'status'=>'Entered', 'approved_by'=>'' ]);
+        return redirect()->back()->with('message', 'Leave Application Submitted Successfully');
+    }
+
+    public function holidays(Request $request){
+
+        $userId = helpers::get_orignal_id(Auth::id());
+        $this->viewData['meta_title'] = 'Holidays';
+
+        $holidays_type = DB::table('pacra_holidays_type')
+            ->get();
+        return view('holidays', $this->viewData)
+            ->with('holidays_type', $holidays_type);
+    }
+
+    public function addHoliday(Request $request){
+
+        $userId = helpers::get_orignal_id(Auth::id());
+        $this->viewData['meta_title'] = 'Holidays';
+       // dd($request->all());
+
+        holidaysModel::create(['holiday_name'=>$request->holiday_name,'holiday_type'=>$request->holiday_type,
+            'from_date'=>$request->from_date, 'to_date'=>$request->to_date]);
+
+
+        return redirect()->back()->with('message', 'Holiday Added Successfully');
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
